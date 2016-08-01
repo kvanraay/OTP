@@ -1,8 +1,8 @@
 
 BACTERIA_TYPES = {"C", "L+", "L-", "CL+", "CL-", "S", "E"}
 
-COST_FOR_CARRYING_COLICIN = 0.05
-COST_FOR_CARRYING_PHAGE = 0.03
+COST_FOR_CARRYING_COLICIN = 0.1
+COST_FOR_CARRYING_PHAGE = 0.1
 
 class Bacteria:
     """
@@ -52,8 +52,8 @@ class Bacteria:
         if self.bacteria_type == "E":
             return 0
         if self.bacteria_type == "S":
-            return 1
-        rate = 1.0
+            return 1.1
+        rate = 1.1
         if "C" in self.bacteria_type:
             rate = rate - COST_FOR_CARRYING_COLICIN
         if "L" in self.bacteria_type:
