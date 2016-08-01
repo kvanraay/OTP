@@ -54,7 +54,7 @@ class World:
         Remove free colicin and free phage.
         All alive bacteria replicate once.
         """
-        self.prob_induce_lysis_of_all_cells(0.05)
+        self.prob_induce_lysis_of_all_cells(0.0037)
         self.kill_non_immunes()
         self.remove_colicin_and_phage()
         self.replicate(is_structured)
