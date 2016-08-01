@@ -51,6 +51,9 @@ def count_bacteria_types(world):
     return counter
 
 def map_world_to_csv(world, file_name):
+    """
+    creates map of world (location and bacterial cell type)
+    """
     x_dimension = world.dimension_x_length
     y_dimension = world.dimension_y_length
 
@@ -91,9 +94,9 @@ def run_replicate(is_structured, number_of_generations, length_of_world,
     output_counts_to_csv(file_name, counters)
     return earth
 
-num_of_reps = 1
+num_of_reps = 2
 for rep_num in range(num_of_reps):
-    filename = "Awesome_{}.csv".format(rep_num)
-    World = run_replicate(is_structured=False, number_of_generations=10,
-        length_of_world=10, seed_proportions={"C":0.5, "L-":0.1, "S":0.2},
+    filename = "teststructured_{}.csv".format(rep_num)
+    World = run_replicate(is_structured=True, number_of_generations=1000,
+        length_of_world=10, seed_proportions={"C":0.25, "S":0.25, "CL-": 0.25},
         file_name=filename)
