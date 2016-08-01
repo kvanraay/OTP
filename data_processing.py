@@ -94,6 +94,6 @@ def run_replicate(is_structured, number_of_generations, length_of_world,
 num_of_reps = 1
 for rep_num in range(num_of_reps):
     filename = "Awesome_{}.csv".format(rep_num)
-    world = run_replicate(is_structured=False, number_of_generations=10,
+    World = run_replicate(is_structured=False, number_of_generations=10,
         length_of_world=10, seed_proportions={"C":0.5, "L-":0.1, "S":0.2},
         file_name=filename)
