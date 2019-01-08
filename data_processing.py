@@ -1,249 +1,118 @@
-from cell import Bacteria, Cell
-import random
+import world
+import csv
+from cell import Bacteria, Cell, BACTERIA_TYPES
+from collections import Counter
+from multiprocessing import Pool
+import os
 
+DATA_DIRECTORY = "/Users/IamUnicorn/Documents/Grad School/Projects/OTP/Data_Unicorn/"
 
-PROB_OF_INDUCTION = 0.0037
-COLICIN_PERSISTENCE =  10
-PHAGE_PERSISTENCE = 3
-
-def seed_world(world, seed_proportions):
-    total_proportion = sum(seed_proportions.values())
-    assert total_proportion <= 1, "Seed proportions must tally to less than or equal 1"
-
-
-    number_of_positions = len(world.cells)
-    new_cells = []
-    for bacteria_type_str, proportion in seed_proportions.items():
-        num_cells_of_type = int(number_of_positions * proportion)
-        for _ in range(num_cells_of_type):
-            bacteria_type = Bacteria(bacteria_type_str)
-            new_cells.append(Cell(bacteria_type=bacteria_type))
-
-    while len(new_cells) < number_of_positions:
-        new_cells.append(Cell())
-    random.shuffle(new_cells)
-    world.cells = new_cells
-
-class World:
+def output_counts_to_csv(file_name, counters):
     """
-    A grid of cells.
+    writes data from simulation to csv file format
     """
-    def __init__(self, dimension_x_length, dimension_y_length, cells=[]):
-        self.dimension_x_length = dimension_x_length
-        self.dimension_y_length = dimension_y_length
-        assert self.dimension_x_length >= 1
-        assert self.dimension_y_length >= 1
-        self.cells = cells[:]
-        total_cell_count = self.dimension_x_length * self.dimension_y_length
-        assert len(self.cells) <= total_cell_count
-        while len(self.cells) < total_cell_count:
-            self.cells.append(Cell())
+    with open(file_name, 'w') as csvfile:
+        columns = ['Update', 'Strain', 'Count']
 
-    def get_all_coordinates_in_world(self):
-        """
-        Go through all coordinates by row, starting with (0,0), (1,0), (2,0)
-        """
-        results = []
-        for y in range(self.dimension_y_length):
-            for x in range(self.dimension_x_length):
-                coord = (x,y)
-                results.append(coord)
-        return results
+        writer = csv.DictWriter(csvfile, fieldnames=columns)
+
+        writer.writeheader()
+
+        for update, counter in enumerate(counters):
+            for bac_type in sorted(list(BACTERIA_TYPES)):
+                if bac_type not in counter:
+                    counter[bac_type] = 0
+
+                writer.writerow({"Update": update, "Strain":bac_type, "Count":counter[bac_type]})
 
 
-    def advance_one_generation(self, is_structured):
-        """
-        Colicin releasers relase colicin.
-        Lysogens with functional phage release phage.
-        Cells without immunity to colicin or phage will die if either is present.
-        Remove free colicin and free phage.
-        All alive bacteria replicate once.
-        """
-        self.prob_induce_lysis_of_all_cells(PROB_OF_INDUCTION)
-        self.kill_non_immunes()
-        self.degrade_colicin_and_phage()
-        self.replicate(is_structured)
+        #writer.writerow({'first_name': 'Baked', 'last_name': 'Beans'})
+        #writer.writerow({'first_name': 'Lovely', 'last_name': 'Spam'})
+        #writer.writerow({'first_name': 'Wonderful', 'last_name': 'Spam'})
 
 
 
-    def induce_lysis(self, x, y):
-        """
-        Induces lysis and releases colicin and/or phage into nearest neighbors
-        set by radius for bacterial cells that can lyse ( anything with L )
-        """
-        cell = self.get_cell(x,y)
+def print_tally(counter):
+    """
+    tallies all of the strains in the world and outputs it.
+    """
+    ordered_bac_types = sorted(list(BACTERIA_TYPES))
+    for bac_type in ordered_bac_types:
+        line = "{}: {}".format(bac_type, counter[bac_type])
+        print(line)
+
+def count_bacteria_types(world):
+    """
+    takes a world and returns a counter of the bacteria types.
+    """
+
+    bac_strs = []
+    for cell in world.cells:
         bac = cell.bacteria_type
-        release_phage = bac.can_release_phage()
-        release_colicin = bac.can_release_colicin()
+        bac_str = bac.bacteria_type
+        bac_strs.append(bac_str)
+    counter = Counter(bac_strs)
+    return counter
 
-        nearest_neighbors = self.get_nearest_neighbors_of_cell(x, y, radius=2)
-        for neighbor in nearest_neighbors:
-            if release_phage:
-                cell.has_phage = PHAGE_PERSISTENCE
-                neighbor.has_phage = PHAGE_PERSISTENCE
-            if release_colicin:
-                cell.has_colicin = COLICIN_PERSISTENCE
-                neighbor.has_colicin = COLICIN_PERSISTENCE
-        if bac.can_lyse():
-            cell.bacteria_type = Bacteria("E")
+def map_world_to_csv(world, file_name):
+    """
+    creates map of world (location and bacterial cell type)
+    """
+    x_dimension = world.dimension_x_length
+    y_dimension = world.dimension_y_length
 
 
+    lines = []
+    for y in range(y_dimension):
+        line = []
+        for x in range(x_dimension):
+            cell = world.get_cell(x,y)
+            bacteria_type_str = cell.bacteria_type.bacteria_type
+            line.append(bacteria_type_str)
+        lines.append(line)
 
-
-    def prob_induce_lysis_of_all_cells(self, induction_rate):
-        """
-        for each cell in the world, the cell will be induced some proportion
-        of the time randomly. If an induced cell can produce colicin or phage,
-        such will be added to its neighbors.
-        """
-        all_coords = self.get_all_coordinates_in_world()
-        for coord in all_coords:
-            x,y = coord
-            induced = random.random() < induction_rate
-            if induced:
-                self.induce_lysis(x, y)
+    with open(file_name, "w") as file_handle:
+        writer = csv.writer(file_handle)
+        writer.writerows(lines)
 
 
 
-    def kill_non_immunes(self):
-        """
-        kills bacterial cells that are sensitive to colicin or phage if colicin
-        or phage is present in cell.
-        """
-        all_coords = self.get_all_coordinates_in_world()
-        for coord in all_coords:
-            x,y = coord
-            cell = self.get_cell(x,y)
-            bac = cell.bacteria_type
-            is_immune_to_colicin = bac.is_immune_to_colicin()
-            if not is_immune_to_colicin and cell.has_colicin:
-                cell.bacteria_type = Bacteria("E")
-            is_immune_to_phage = bac.is_immune_to_phage()
-            if not is_immune_to_phage and cell.has_phage:
-                cell.bacteria_type = Bacteria("E")
+def run_replicate(is_structured, number_of_generations, length_of_world,
+    seed_proportions, data_path):
+    """
+    seed_proportions can take in any bacteria type and value between 0 and 1
+    """
+    os.makedirs(data_path)
+    abundance_path = data_path + "abundance.csv"
 
-    def degrade_colicin_and_phage(self):
-        """
-        removes all colicin and phage from cells
-        """
-        all_coords = self.get_all_coordinates_in_world()
-        for coord in all_coords:
-            x,y = coord
-            cell = self.get_cell(x,y)
-            if cell.has_colicin:
-                cell.has_colicin -= 1
-            if cell.has_phage:
-                cell.has_phage -= 1
-
-    def replicate(self, is_structured):
-        """
-        All non E bacteria will replicate randomly into a neighbor.
-        """
-        all_coords = self.get_all_coordinates_in_world()
-        random.shuffle(all_coords)
-        for coord in all_coords:
-            x,y = coord
-            cell = self.get_cell(x,y)
-            bac = cell.bacteria_type
-            replication_prob = bac.replication_rate()
-            if random.random() < replication_prob:
-                if is_structured:
-                    four_neighbors = self.get_nearest_four_neighbors_of_cell(x,y)
-                else:
-                    four_neighbors = self.get_random_neighbors_of_cell(x, y, 4)
-                unlucky = random.choice(four_neighbors)
-                unlucky.bacteria_type = Bacteria(bac.bacteria_type)
+    earth = world.World(length_of_world, length_of_world,[])
+    world.seed_world(earth, seed_proportions)
 
 
-    def check_bounds(self, x, y):
-        """
-        checks the bounds of the world
-        """
-        assert x >= 0
-        assert x < self.dimension_x_length
-        assert y >= 0
-        assert y < self.dimension_y_length
+    counters = []
+    counter = count_bacteria_types(earth)
+    counters.append(counter)
+    for gen_num in range(number_of_generations):
+        earth.advance_one_generation(is_structured)
+        counter = count_bacteria_types(earth)
+        counters.append(counter)
+        map_filename = "Map_{}.csv".format(gen_num)
+        map_filename = data_path + map_filename
+        map_world_to_csv(earth, map_filename)
 
-    def __str__(self):
-        """
-        returns a string
-        """
-        return "World(dimension_x_length={}, dimension_y_length={}, cells={})".format(
-        self.dimension_x_length, self.dimension_y_length, self.cells)
+    output_counts_to_csv(abundance_path, counters)
+    return earth
 
-    def get_cell(self, x, y):
-        """
-        this will return a cell associated with the coordinates x,y. indexed by 0.
-        """
-        self.check_bounds(x,y)
-        index = x + y * self.dimension_x_length
-        return self.cells[index]
+def run_job(rep_num):
+    rep_dir = "DataTest_Structured_6Sept17_{}/".format(rep_num)
+    data_path = DATA_DIRECTORY + rep_dir
+    earth = run_replicate(is_structured=True, number_of_generations=1000,
+        length_of_world=200, seed_proportions={ "C":0.25, "CL+":0.25, "S":0.25},
+        data_path=data_path)
 
-    def get_nearest_four_neighbors_of_cell(self, x, y):
-        """
-        gets nearest four neighbors of a focal cell: in a grid this is the cell
-        immediately above, below, to the right, and left of a focal cell.
-        """
-        self.check_bounds(x,y)
-        result = []
-        result.append(self.get_wrapped_cell(x, y-1))
-        result.append(self.get_wrapped_cell(x+1, y))
-        result.append(self.get_wrapped_cell(x, y+1))
-        result.append(self.get_wrapped_cell(x-1, y))
-        return result
-
-    def get_nearest_neighbors_of_cell(self, x, y, radius):
-        """
-        Gets all the cells within a radius of the focal cell.
-        Excludes the focal cells.
-
-        Radius of 0 is nothing.
-        Radius of 1 is the nearest 8 neighbors.
-        Radius of 2 is the nearest 24 neighbors.
-        """
-        self.check_bounds(x,y)
-        x_range = list(range(x - radius, x + radius + 1))
-        y_range = list(range(y - radius, y + radius + 1))
-        result = []
-        for x_coord in x_range:
-            for y_coord in y_range:
-                if x_coord == x and y_coord == y:
-                    continue
-                result.append(self.get_wrapped_cell(x_coord, y_coord))
-        return result
-
-
-
-    def get_random_neighbors_of_cell(self, x, y, number_of_neighbors):
-        """
-        gets random cells from world not including focal cell.
-        for well-mixed environment.
-        """
-        self.check_bounds(x,y)
-        focal_coordinate = (x,y)
-        coordinates = set()
-        while len(coordinates) < number_of_neighbors:
-            rand_x = random.randrange(self.dimension_x_length)
-            rand_y = random.randrange(self.dimension_y_length)
-            rand_coord = (rand_x, rand_y)
-            if rand_coord == focal_coordinate:
-                continue
-            coordinates.add(rand_coord)
-        results = []
-        for coord in coordinates:
-            x, y = coord
-            rand_cell = self.get_cell(x, y)
-            results.append(rand_cell)
-        return results
-
-
-
-
-    def get_wrapped_cell(self, x, y):
-        """
-        If given a coordinate outside the bounds, this will return the cell after
-        wrapping around the boundaries.
-        """
-        wrapped_x = x % self.dimension_x_length
-        wrapped_y = y % self.dimension_y_length
-        return self.get_cell(wrapped_x, wrapped_y)
+if __name__ == '__main__':
+    num_of_reps = 4
+    num_of_workers = 2
+    jobs = list(range(num_of_reps))
+    with Pool(num_of_workers) as p:
+        p.map(run_job, jobs)
