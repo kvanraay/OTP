@@ -5,7 +5,7 @@ from collections import Counter
 from multiprocessing import Pool
 import os
 
-DATA_DIRECTORY = "/Users/IamUnicorn/Documents/Grad School/Projects/OTP/Data_Unicorn/"
+DATA_DIRECTORY = "set directory"
 
 def output_counts_to_csv(file_name, counters):
     """
