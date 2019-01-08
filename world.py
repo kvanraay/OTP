@@ -1,6 +1,11 @@
 from cell import Bacteria, Cell
 import random
 
+
+PROB_OF_INDUCTION = 0.0037
+COLICIN_PERSISTENCE =  10
+PHAGE_PERSISTENCE = 3
+
 def seed_world(world, seed_proportions):
     total_proportion = sum(seed_proportions.values())
     assert total_proportion <= 1, "Seed proportions must tally to less than or equal 1"
@@ -54,32 +59,31 @@ class World:
         Remove free colicin and free phage.
         All alive bacteria replicate once.
         """
-        self.prob_induce_lysis_of_all_cells(0.0037)
+        self.prob_induce_lysis_of_all_cells(PROB_OF_INDUCTION)
         self.kill_non_immunes()
-        self.remove_colicin_and_phage()
+        self.degrade_colicin_and_phage()
         self.replicate(is_structured)
 
 
 
     def induce_lysis(self, x, y):
         """
-        Induces lysis and releases colicin and/or phage into nearest 4 neighbors
-        for bacterial cells that can lyse ( anything with L )
+        Induces lysis and releases colicin and/or phage into nearest neighbors
+        set by radius for bacterial cells that can lyse ( anything with L )
         """
         cell = self.get_cell(x,y)
         bac = cell.bacteria_type
         release_phage = bac.can_release_phage()
         release_colicin = bac.can_release_colicin()
-        if release_phage:
-            cell.has_phage = True
-            nearest_4 = self.get_nearest_four_neighbors_of_cell(x,y)
-            for neighbor in nearest_4:
-                neighbor.has_phage = True
-        if release_colicin:
-            cell.has_colicin = True
-            nearest_4 = self.get_nearest_four_neighbors_of_cell(x,y)
-            for neighbor in nearest_4:
-                neighbor.has_colicin = True
+
+        nearest_neighbors = self.get_nearest_neighbors_of_cell(x, y, radius=2)
+        for neighbor in nearest_neighbors:
+            if release_phage:
+                cell.has_phage = PHAGE_PERSISTENCE
+                neighbor.has_phage = PHAGE_PERSISTENCE
+            if release_colicin:
+                cell.has_colicin = COLICIN_PERSISTENCE
+                neighbor.has_colicin = COLICIN_PERSISTENCE
         if bac.can_lyse():
             cell.bacteria_type = Bacteria("E")
 
@@ -118,7 +122,7 @@ class World:
             if not is_immune_to_phage and cell.has_phage:
                 cell.bacteria_type = Bacteria("E")
 
-    def remove_colicin_and_phage(self):
+    def degrade_colicin_and_phage(self):
         """
         removes all colicin and phage from cells
         """
@@ -126,8 +130,10 @@ class World:
         for coord in all_coords:
             x,y = coord
             cell = self.get_cell(x,y)
-            cell.has_colicin = False
-            cell.has_phage = False
+            if cell.has_colicin:
+                cell.has_colicin -= 1
+            if cell.has_phage:
+                cell.has_phage -= 1
 
     def replicate(self, is_structured):
         """
@@ -144,7 +150,7 @@ class World:
                 if is_structured:
                     four_neighbors = self.get_nearest_four_neighbors_of_cell(x,y)
                 else:
-                    four_neighbors = self.get_random_four_neighbors_of_cell(x,y)
+                    four_neighbors = self.get_random_neighbors_of_cell(x, y, 4)
                 unlucky = random.choice(four_neighbors)
                 unlucky.bacteria_type = Bacteria(bac.bacteria_type)
 
@@ -186,15 +192,37 @@ class World:
         result.append(self.get_wrapped_cell(x-1, y))
         return result
 
-    def get_random_four_neighbors_of_cell(self, x,y):
+    def get_nearest_neighbors_of_cell(self, x, y, radius):
         """
-        gets four random cells from world not including focal cell.
+        Gets all the cells within a radius of the focal cell.
+        Excludes the focal cells.
+
+        Radius of 0 is nothing.
+        Radius of 1 is the nearest 8 neighbors.
+        Radius of 2 is the nearest 24 neighbors.
+        """
+        self.check_bounds(x,y)
+        x_range = list(range(x - radius, x + radius + 1))
+        y_range = list(range(y - radius, y + radius + 1))
+        result = []
+        for x_coord in x_range:
+            for y_coord in y_range:
+                if x_coord == x and y_coord == y:
+                    continue
+                result.append(self.get_wrapped_cell(x_coord, y_coord))
+        return result
+
+
+
+    def get_random_neighbors_of_cell(self, x, y, number_of_neighbors):
+        """
+        gets random cells from world not including focal cell.
         for well-mixed environment.
         """
         self.check_bounds(x,y)
         focal_coordinate = (x,y)
         coordinates = set()
-        while len(coordinates) < 4:
+        while len(coordinates) < number_of_neighbors:
             rand_x = random.randrange(self.dimension_x_length)
             rand_y = random.randrange(self.dimension_y_length)
             rand_coord = (rand_x, rand_y)
